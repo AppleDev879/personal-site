@@ -1,0 +1,345 @@
+/*
+ * Ink field.
+ *
+ * Filaments are emitted from the left edge and carried rightward through a
+ * Perlin flow field, accumulating into a single long brush stroke. The
+ * canvas doubles as the color-scheme toggle.
+ */
+
+(function () {
+  'use strict';
+
+  var canvas = document.getElementById('ink');
+  if (!canvas || !canvas.getContext) return;
+
+  var ctx = canvas.getContext('2d', { alpha: false });
+  if (!ctx) return;
+
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ------------------------------------------------------------ noise
+
+  function makeNoise(seed) {
+    var perm = new Uint8Array(256);
+    var p = new Uint8Array(512);
+    var i;
+
+    for (i = 0; i < 256; i++) perm[i] = i;
+
+    var s = seed >>> 0;
+    function rnd() {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 4294967296;
+    }
+    for (i = 255; i > 0; i--) {
+      var j = (rnd() * (i + 1)) | 0;
+      var t = perm[i];
+      perm[i] = perm[j];
+      perm[j] = t;
+    }
+    for (i = 0; i < 512; i++) p[i] = perm[i & 255];
+
+    function fade(t) {
+      return t * t * t * (t * (t * 6 - 15) + 10);
+    }
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+    function grad(h, x, y) {
+      switch (h & 3) {
+        case 0:
+          return x + y;
+        case 1:
+          return -x + y;
+        case 2:
+          return x - y;
+        default:
+          return -x - y;
+      }
+    }
+
+    return function (x, y) {
+      var fx = Math.floor(x);
+      var fy = Math.floor(y);
+      var X = fx & 255;
+      var Y = fy & 255;
+      var xf = x - fx;
+      var yf = y - fy;
+      var u = fade(xf);
+      var v = fade(yf);
+
+      var aa = p[p[X] + Y];
+      var ab = p[p[X] + Y + 1];
+      var ba = p[p[X + 1] + Y];
+      var bb = p[p[X + 1] + Y + 1];
+
+      var x1 = lerp(grad(aa, xf, yf), grad(ba, xf - 1, yf), u);
+      var x2 = lerp(grad(ab, xf, yf - 1), grad(bb, xf - 1, yf - 1), u);
+      return lerp(x1, x2, v);
+    };
+  }
+
+  var noise = makeNoise(0x5eed1);
+
+  // ------------------------------------------------------------ colors
+
+  var inkRGB = '255 255 255';
+  var surfaceRGB = '0 0 0';
+
+  /*
+   * Dark ink on white reads far heavier than white ink on black at equal
+   * alpha, so light mode gets a lighter hand and a faster-receding wash.
+   * Without this the stroke silts up into a flat gray mass.
+   */
+  var inkScale = 1;
+  var washAlpha = 0.007;
+
+  function readColors() {
+    var cs = getComputedStyle(document.documentElement);
+    inkRGB = (cs.getPropertyValue('--ink-rgb') || '255 255 255').trim();
+    surfaceRGB = (cs.getPropertyValue('--surface-rgb') || '0 0 0').trim();
+
+    var light = document.documentElement.getAttribute('data-theme') === 'light';
+    inkScale = light ? 0.3 : 1;
+    washAlpha = light ? 0.022 : 0.007;
+  }
+
+  // ------------------------------------------------------------ state
+
+  var W = 0; // backing-store pixels
+  var H = 0;
+  var dpr = 1;
+  var particles = [];
+  var COUNT = 0;
+  var time = 0;
+  var rafId = null;
+
+  var pointer = { x: 0, y: 0, active: false };
+
+  function gaussian() {
+    // Box-Muller, clamped — keeps the stroke banded around the centerline.
+    var u = 0;
+    var v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    var g = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    return Math.max(-2.5, Math.min(2.5, g));
+  }
+
+  function spawn(pt, seedAcross) {
+    pt.x = seedAcross ? Math.random() * W : -Math.random() * W * 0.08;
+    pt.y = H * 0.5 + gaussian() * H * 0.16;
+    pt.px = pt.x;
+    pt.py = pt.y;
+    pt.speed = (0.55 + Math.random() * 0.9) * dpr;
+    pt.life = 0;
+    pt.maxLife = 300 + Math.random() * 520;
+    pt.weight = 0.3 + Math.random() * 0.5;
+    pt.alpha = 0.07 + Math.random() * 0.17;
+    return pt;
+  }
+
+  function build() {
+    var rect = canvas.getBoundingClientRect();
+    if (!rect.width) return false;
+
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // CSS owns the aspect ratio; fall back only if layout hasn't resolved.
+    var cssH = rect.height || rect.width / 2;
+    W = Math.max(1, Math.round(rect.width * dpr));
+    H = Math.max(1, Math.round(cssH * dpr));
+
+    canvas.width = W;
+    canvas.height = H;
+
+    readColors();
+    ctx.fillStyle = 'rgb(' + surfaceRGB + ')';
+    ctx.fillRect(0, 0, W, H);
+    ctx.lineCap = 'round';
+
+    // Density tracks area so phones don't render a solid block.
+    COUNT = Math.round(Math.min(2600, Math.max(700, (W * H) / (900 * dpr))));
+    particles = new Array(COUNT);
+    for (var i = 0; i < COUNT; i++) particles[i] = spawn({}, true);
+
+    time = 0;
+    return true;
+  }
+
+  // ------------------------------------------------------------ field
+
+  var SX = 0.0016;
+  var SY = 0.0026;
+
+  function angleAt(x, y, t) {
+    var a = noise(x * SX, y * SY + t);
+    var b = noise(x * SX * 2.6, y * SY * 2.6 - t * 1.4);
+    return (a * 0.68 + b * 0.32) * 0.95;
+  }
+
+  function step() {
+    time += 0.0016;
+
+    // Let the wash recede so the stroke breathes instead of saturating.
+    ctx.fillStyle = 'rgb(' + surfaceRGB + ' / ' + washAlpha + ')';
+    ctx.fillRect(0, 0, W, H);
+
+    var repel = 130 * dpr;
+    ctx.lineWidth = 1;
+
+    for (var i = 0; i < COUNT; i++) {
+      var pt = particles[i];
+
+      var ang = angleAt(pt.x, pt.y, time);
+      var vx = Math.cos(ang) * pt.speed;
+      var vy = Math.sin(ang) * pt.speed;
+
+      // Pull back toward the centerline so the field resolves into one
+      // horizontal stroke instead of dispersing off the bottom.
+      vy += (H * 0.5 - pt.y) * 0.005;
+
+      if (pointer.active) {
+        var dx = pt.x - pointer.x;
+        var dy = pt.y - pointer.y;
+        var d = Math.sqrt(dx * dx + dy * dy);
+        if (d < repel && d > 0.001) {
+          var f = (1 - d / repel) * 2.6;
+          vx += (dx / d) * f;
+          vy += (dy / d) * f;
+        }
+      }
+
+      pt.px = pt.x;
+      pt.py = pt.y;
+      pt.x += vx;
+      pt.y += vy;
+      pt.life++;
+
+      if (pt.x > W * 1.02 || pt.y < -H * 0.15 || pt.y > H * 1.15 || pt.life > pt.maxLife) {
+        spawn(pt, false);
+        continue;
+      }
+
+      // Alpha envelope: ease in at birth, taper at death and at the right edge.
+      var lifeT = pt.life / pt.maxLife;
+      var env = Math.min(1, pt.life / 30) * Math.min(1, (1 - lifeT) / 0.4);
+      var edge = Math.min(1, (1 - pt.x / W) / 0.14);
+      var a2 = pt.alpha * env * Math.max(0, edge) * inkScale;
+      if (a2 <= 0.002) continue;
+
+      ctx.strokeStyle = 'rgb(' + inkRGB + ' / ' + a2.toFixed(4) + ')';
+      ctx.lineWidth = pt.weight * dpr;
+      ctx.beginPath();
+      ctx.moveTo(pt.px, pt.py);
+      ctx.lineTo(pt.x, pt.y);
+      ctx.stroke();
+    }
+  }
+
+  function loop() {
+    step();
+    rafId = window.requestAnimationFrame(loop);
+  }
+
+  function start() {
+    if (rafId !== null || reduceMotion) return;
+    rafId = window.requestAnimationFrame(loop);
+  }
+
+  function stop() {
+    if (rafId === null) return;
+    window.cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  function render() {
+    if (!build()) return;
+    if (reduceMotion) {
+      // Compose one settled frame and leave it there.
+      for (var i = 0; i < 900; i++) step();
+      return;
+    }
+    stop();
+    start();
+  }
+
+  // ------------------------------------------------------------ pointer
+
+  function toLocal(clientX, clientY) {
+    var rect = canvas.getBoundingClientRect();
+    pointer.x = (clientX - rect.left) * (W / rect.width);
+    pointer.y = (clientY - rect.top) * (H / rect.height);
+    pointer.active = true;
+  }
+
+  canvas.addEventListener('mousemove', function (e) {
+    toLocal(e.clientX, e.clientY);
+  });
+
+  canvas.addEventListener('mouseleave', function () {
+    pointer.active = false;
+  });
+
+  canvas.addEventListener(
+    'touchmove',
+    function (e) {
+      if (e.touches && e.touches.length) {
+        toLocal(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    },
+    { passive: true }
+  );
+
+  canvas.addEventListener('touchend', function () {
+    pointer.active = false;
+  });
+
+  // ------------------------------------------------------------- theme
+
+  function toggleTheme() {
+    var root = document.documentElement;
+    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try {
+      localStorage.setItem('theme', next);
+    } catch (_) {}
+
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', next === 'dark' ? '#000000' : '#ffffff');
+
+    render();
+  }
+
+  canvas.addEventListener('click', toggleTheme);
+
+  canvas.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      toggleTheme();
+    }
+  });
+
+  // ------------------------------------------------------------ lifecycle
+
+  var resizeTimer = null;
+  var lastWidth = window.innerWidth;
+
+  window.addEventListener('resize', function () {
+    // Mobile browsers fire resize on toolbar collapse; width is the real signal.
+    if (window.innerWidth === lastWidth) return;
+    lastWidth = window.innerWidth;
+    window.clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(render, 180);
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) stop();
+    else start();
+  });
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () {});
+  }
+
+  render();
+})();

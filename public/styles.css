@@ -1,0 +1,269 @@
+/* ---------------------------------------------------------------- fonts */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist-latin-wght-normal.woff2') format('woff2-variations');
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist-mono-latin-wght-normal.woff2') format('woff2-variations');
+}
+
+/* --------------------------------------------------------------- tokens */
+
+:root {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Ink tiers. Light is the fallback when no theme has been resolved yet. */
+  --surface: #fff;
+  --ink: #000;
+  --ink-soft: rgb(0 0 0 / 0.78);
+  --ink-muted: rgb(0 0 0 / 0.55);
+  --ink-faint: rgb(0 0 0 / 0.42);
+  --ink-ghost: rgb(0 0 0 / 0.3);
+  --ink-trace: rgb(0 0 0 / 0.14);
+  --glow: rgb(0 0 0 / 0.28);
+
+  /* Consumed by the canvas, which needs channels rather than a color. */
+  --ink-rgb: 0 0 0;
+  --surface-rgb: 255 255 255;
+
+  --step: 0.25rem;
+}
+
+:root[data-theme='dark'] {
+  --surface: #000;
+  --ink: #fff;
+  --ink-soft: rgb(255 255 255 / 0.7);
+  --ink-muted: rgb(255 255 255 / 0.5);
+  --ink-faint: rgb(255 255 255 / 0.4);
+  --ink-ghost: rgb(255 255 255 / 0.3);
+  --ink-trace: rgb(255 255 255 / 0.12);
+  --glow: rgb(255 255 255 / 0.35);
+
+  --ink-rgb: 255 255 255;
+  --surface-rgb: 0 0 0;
+}
+
+/* ---------------------------------------------------------------- reset */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background-color 0.4s ease;
+}
+
+/* --------------------------------------------------------------- layout */
+
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: calc(var(--step) * 12) calc(var(--step) * 6);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--step) * 7);
+  width: 100%;
+  max-width: 26rem;
+}
+
+@media (min-width: 640px) {
+  .column {
+    gap: calc(var(--step) * 8);
+    max-width: 30rem;
+  }
+}
+
+/* ------------------------------------------------------------ signature */
+
+.mark {
+  width: 100%;
+}
+
+.ink {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2 / 1;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.ink:focus {
+  outline: none;
+}
+
+.ink:focus-visible {
+  outline: 1px solid var(--ink-ghost);
+  outline-offset: 6px;
+}
+
+/* ----------------------------------------------------------------- type */
+
+.bio {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--step) * 4);
+}
+
+.name {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--ink);
+  text-shadow: 0 0 10px var(--glow);
+}
+
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--step) * 2.5);
+}
+
+.line {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.7;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.line.dim {
+  color: var(--ink-muted);
+}
+
+/* ---------------------------------------------------------------- links */
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--step) * 2) calc(var(--step) * 3);
+}
+
+.link {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+  color: var(--ink-muted);
+  transition:
+    color 0.3s ease,
+    text-shadow 0.3s ease;
+}
+
+.link:hover {
+  color: var(--ink);
+  text-shadow: 0 0 8px var(--glow);
+}
+
+.link:focus-visible {
+  color: var(--ink);
+  outline: 1px solid var(--ink-ghost);
+  outline-offset: 4px;
+}
+
+.sep {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ink-trace);
+  user-select: none;
+}
+
+/* --------------------------------------------------------------- motion */
+
+/*
+ * Entrance: each block resolves out of a short signal-drop rather than a
+ * fade, so the page reads as something switching on.
+ */
+.reveal {
+  opacity: 0;
+  animation: resolve-in 0.4s step-end forwards;
+  animation-delay: var(--delay, 0ms);
+}
+
+@keyframes resolve-in {
+  0% {
+    opacity: 0;
+    transform: translateX(3px);
+  }
+  15% {
+    opacity: 1;
+    transform: translateX(-2px);
+  }
+  30% {
+    opacity: 0.25;
+    transform: translateX(1px);
+  }
+  45% {
+    opacity: 1;
+    transform: translateX(-3px);
+  }
+  60% {
+    opacity: 0.6;
+    transform: translateX(2px);
+  }
+  75% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+
+  body,
+  .link {
+    transition: none;
+  }
+}

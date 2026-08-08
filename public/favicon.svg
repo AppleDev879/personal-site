@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .bg { fill: #000; }
+    .fg { fill: #fff; }
+    @media (prefers-color-scheme: light) {
+      .bg { fill: #fff; }
+      .fg { fill: #000; }
+    }
+  </style>
+  <rect class="bg" width="32" height="32" rx="6" />
+  <!-- Ink stroke: a dense head dispersing to the right. -->
+  <circle class="fg" cx="9" cy="16" r="4.5" />
+  <circle class="fg" cx="17.5" cy="16" r="2.4" opacity="0.7" />
+  <circle class="fg" cx="23.5" cy="16" r="1.5" opacity="0.45" />
+  <circle class="fg" cx="27.5" cy="16" r="0.9" opacity="0.25" />
+</svg>

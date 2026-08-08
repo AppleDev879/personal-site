@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+
+    <title>Andrew Barrett</title>
+    <meta name="description" content="Founding forward deployed engineer at Poetic." />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+
+    <link
+      rel="preload"
+      href="/fonts/geist-mono-latin-wght-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/geist-latin-wght-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Andrew Barrett" />
+    <meta property="og:title" content="Andrew Barrett" />
+    <meta property="og:description" content="Founding forward deployed engineer at Poetic." />
+    <meta property="og:url" content="https://abarrett.io/" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Andrew Barrett" />
+    <meta name="twitter:description" content="Founding forward deployed engineer at Poetic." />
+
+    <link rel="stylesheet" href="/styles.css" />
+
+    <script>
+      // Resolve the theme before first paint so there is no flash.
+      (function () {
+        try {
+          var q = new URLSearchParams(window.location.search).get('theme');
+          var t = q === 'light' || q === 'dark' ? q : localStorage.getItem('theme');
+          if (t !== 'light' && t !== 'dark') t = 'dark';
+          document.documentElement.setAttribute('data-theme', t);
+          try {
+            localStorage.setItem('theme', t);
+          } catch (_) {}
+        } catch (_) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
+  </head>
+
+  <body>
+    <main class="stage">
+      <div class="column">
+        <div class="mark reveal" style="--delay: 0ms">
+          <canvas
+            id="ink"
+            class="ink"
+            role="button"
+            tabindex="0"
+            aria-label="Toggle color scheme"
+          ></canvas>
+        </div>
+
+        <div class="bio">
+          <h1 class="name reveal" style="--delay: 90ms">Andrew Barrett</h1>
+
+          <div class="lines">
+            <p class="line reveal" style="--delay: 150ms">Founding FDE at Poetic.</p>
+            <p class="line dim reveal" style="--delay: 200ms">
+              Forward deployed engineer — I sit with customers and build the thing.
+            </p>
+          </div>
+        </div>
+
+        <nav class="links reveal" style="--delay: 260ms" aria-label="Elsewhere">
+          <a
+            class="link"
+            href="https://github.com/GITHUB_HANDLE"
+            target="_blank"
+            rel="noopener noreferrer"
+            >GitHub</a
+          >
+          <span class="sep" aria-hidden="true">/</span>
+          <a
+            class="link"
+            href="https://www.linkedin.com/in/LINKEDIN_HANDLE/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >LinkedIn</a
+          >
+        </nav>
+      </div>
+    </main>
+
+    <script src="/main.js"></script>
+  </body>
+</html>
