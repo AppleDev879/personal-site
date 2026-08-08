@@ -152,12 +152,6 @@ body {
   text-shadow: 0 0 10px var(--glow);
 }
 
-.lines {
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--step) * 2.5);
-}
-
 .line {
   margin: 0;
   font-family: var(--font-mono);
@@ -166,10 +160,6 @@ body {
   line-height: 1.7;
   color: var(--ink);
   text-wrap: pretty;
-}
-
-.line.dim {
-  color: var(--ink-muted);
 }
 
 /* ---------------------------------------------------------------- links */
