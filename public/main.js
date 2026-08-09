@@ -1,9 +1,11 @@
 /*
  * Ink field.
  *
- * Filaments are emitted from the left edge and carried rightward through a
- * Perlin flow field, accumulating into a single long brush stroke. The
- * canvas doubles as the color-scheme toggle.
+ * Streams are emitted from the left edge and carried rightward through a
+ * Perlin flow field. Each stream keeps its own recent path and is redrawn
+ * every frame at an alpha set by its age, so old streams dissolve
+ * individually instead of the whole frame being washed down uniformly.
+ * The canvas doubles as the color-scheme toggle.
  */
 
 (function () {
@@ -16,6 +18,15 @@
   if (!ctx) return;
 
   var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /*
+   * A stream is redrawn in full every frame, so its length costs segments.
+   * Sampling the path every SAMPLE frames buys a long silky filament for a
+   * cheap vertex count — at ~3 CSS px between points the polyline still
+   * reads as a smooth curve.
+   */
+  var TRAIL = 80;
+  var SAMPLE = 3;
 
   // ------------------------------------------------------------ noise
 
@@ -81,27 +92,24 @@
 
   var noise = makeNoise(0x5eed1);
 
+  function smoothstep(e0, e1, x) {
+    var t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  }
+
   // ------------------------------------------------------------ colors
 
   var inkRGB = '255 255 255';
   var surfaceRGB = '0 0 0';
 
-  /*
-   * Dark ink on white reads far heavier than white ink on black at equal
-   * alpha, so light mode gets a lighter hand and a faster-receding wash.
-   * Without this the stroke silts up into a flat gray mass.
-   */
+  // Dark ink on white reads heavier than white ink on black at equal alpha.
   var inkScale = 1;
-  var washAlpha = 0.007;
 
   function readColors() {
     var cs = getComputedStyle(document.documentElement);
     inkRGB = (cs.getPropertyValue('--ink-rgb') || '255 255 255').trim();
     surfaceRGB = (cs.getPropertyValue('--surface-rgb') || '0 0 0').trim();
-
-    var light = document.documentElement.getAttribute('data-theme') === 'light';
-    inkScale = light ? 0.3 : 1;
-    washAlpha = light ? 0.022 : 0.007;
+    inkScale = document.documentElement.getAttribute('data-theme') === 'light' ? 0.92 : 1;
   }
 
   // ------------------------------------------------------------ state
@@ -129,14 +137,30 @@
   function spawn(pt, seedAcross) {
     pt.x = seedAcross ? Math.random() * W : -Math.random() * W * 0.08;
     pt.y = H * 0.5 + gaussian() * H * 0.16;
-    pt.px = pt.x;
-    pt.py = pt.y;
     pt.speed = (0.55 + Math.random() * 0.9) * dpr;
-    pt.life = 0;
-    pt.maxLife = 300 + Math.random() * 520;
-    pt.weight = 0.3 + Math.random() * 0.5;
-    pt.alpha = 0.07 + Math.random() * 0.17;
+    pt.maxLife = 520 + Math.random() * 700;
+    // Stagger initial ages so streams don't all dissolve on the same beat.
+    pt.life = seedAcross ? Math.random() * pt.maxLife : 0;
+
+    // Wider streams run fainter, so the band keeps some depth.
+    var w = Math.random();
+    pt.weight = (0.35 + w * 1.0) * dpr;
+    pt.alpha = 0.42 - w * 0.24;
+
+    if (!pt.tx) {
+      pt.tx = new Float32Array(TRAIL);
+      pt.ty = new Float32Array(TRAIL);
+    }
+    pt.n = 0;
+    pt.head = 0;
     return pt;
+  }
+
+  function pushPoint(pt, x, y) {
+    pt.tx[pt.head] = x;
+    pt.ty[pt.head] = y;
+    pt.head = (pt.head + 1) % TRAIL;
+    if (pt.n < TRAIL) pt.n++;
   }
 
   function build() {
@@ -145,7 +169,7 @@
 
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     // CSS owns the aspect ratio; fall back only if layout hasn't resolved.
-    var cssH = rect.height || rect.width / 2;
+    var cssH = rect.height || rect.width / 2.5;
     W = Math.max(1, Math.round(rect.width * dpr));
     H = Math.max(1, Math.round(cssH * dpr));
 
@@ -153,12 +177,11 @@
     canvas.height = H;
 
     readColors();
-    ctx.fillStyle = 'rgb(' + surfaceRGB + ')';
-    ctx.fillRect(0, 0, W, H);
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
-    // Density tracks area so phones don't render a solid block.
-    COUNT = Math.round(Math.min(2600, Math.max(700, (W * H) / (900 * dpr))));
+    // Trails are redrawn each frame, so density is a cost as well as a look.
+    COUNT = Math.round(Math.min(850, Math.max(380, (W * H) / (1800 * dpr))));
     particles = new Array(COUNT);
     for (var i = 0; i < COUNT; i++) particles[i] = spawn({}, true);
 
@@ -180,12 +203,10 @@
   function step() {
     time += 0.0016;
 
-    // Let the wash recede so the stroke breathes instead of saturating.
-    ctx.fillStyle = 'rgb(' + surfaceRGB + ' / ' + washAlpha + ')';
+    ctx.fillStyle = 'rgb(' + surfaceRGB + ')';
     ctx.fillRect(0, 0, W, H);
 
     var repel = 130 * dpr;
-    ctx.lineWidth = 1;
 
     for (var i = 0; i < COUNT; i++) {
       var pt = particles[i];
@@ -209,29 +230,33 @@
         }
       }
 
-      pt.px = pt.x;
-      pt.py = pt.y;
       pt.x += vx;
       pt.y += vy;
       pt.life++;
 
-      if (pt.x > W * 1.02 || pt.y < -H * 0.15 || pt.y > H * 1.15 || pt.life > pt.maxLife) {
+      if (pt.x > W * 1.06 || pt.y < -H * 0.2 || pt.y > H * 1.2 || pt.life > pt.maxLife) {
         spawn(pt, false);
         continue;
       }
 
-      // Alpha envelope: ease in at birth, taper at death and at the right edge.
+      if (pt.life % SAMPLE === 0) pushPoint(pt, pt.x, pt.y);
+      if (pt.n < 2) continue;
+
+      // Age envelope: quick to appear, then a long eased dissolve.
       var lifeT = pt.life / pt.maxLife;
-      var env = Math.min(1, pt.life / 30) * Math.min(1, (1 - lifeT) / 0.4);
-      var edge = Math.min(1, (1 - pt.x / W) / 0.14);
-      var a2 = pt.alpha * env * Math.max(0, edge) * inkScale;
-      if (a2 <= 0.002) continue;
+      var a2 = pt.alpha * smoothstep(0, 0.05, lifeT) * (1 - smoothstep(0.4, 1, lifeT)) * inkScale;
+      if (a2 <= 0.003) continue;
 
       ctx.strokeStyle = 'rgb(' + inkRGB + ' / ' + a2.toFixed(4) + ')';
-      ctx.lineWidth = pt.weight * dpr;
+      ctx.lineWidth = pt.weight;
       ctx.beginPath();
-      ctx.moveTo(pt.px, pt.py);
-      ctx.lineTo(pt.x, pt.y);
+
+      var start = (pt.head - pt.n + TRAIL) % TRAIL;
+      ctx.moveTo(pt.tx[start], pt.ty[start]);
+      for (var k = 1; k < pt.n; k++) {
+        var idx = (start + k) % TRAIL;
+        ctx.lineTo(pt.tx[idx], pt.ty[idx]);
+      }
       ctx.stroke();
     }
   }
@@ -255,8 +280,8 @@
   function render() {
     if (!build()) return;
     if (reduceMotion) {
-      // Compose one settled frame and leave it there.
-      for (var i = 0; i < 900; i++) step();
+      // Advance to a settled frame and leave it there.
+      for (var i = 0; i < 240; i++) step();
       return;
     }
     stop();
@@ -307,7 +332,8 @@
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', next === 'dark' ? '#000000' : '#ffffff');
 
-    render();
+    readColors();
+    if (reduceMotion) render();
   }
 
   canvas.addEventListener('click', toggleTheme);
@@ -336,10 +362,6 @@
     if (document.hidden) stop();
     else start();
   });
-
-  if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(function () {});
-  }
 
   render();
 })();

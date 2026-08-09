@@ -104,7 +104,13 @@ body {
 @media (min-width: 640px) {
   .column {
     gap: calc(var(--step) * 8);
-    max-width: 30rem;
+    max-width: 38rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .column {
+    max-width: 46rem;
   }
 }
 
@@ -118,9 +124,22 @@ body {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 2 / 1;
+  aspect-ratio: 5 / 2;
   cursor: pointer;
-  border-radius: 2px;
+
+  /*
+   * Feather all four sides so the stroke dissolves into the page instead of
+   * being sliced off at the canvas bounds. The two gradients are intersected
+   * so corners fade on both axes.
+   */
+  -webkit-mask-image:
+    linear-gradient(to right, transparent 0%, #000 7%, #000 90%, transparent 100%),
+    linear-gradient(to bottom, transparent 0%, #000 14%, #000 86%, transparent 100%);
+  mask-image:
+    linear-gradient(to right, transparent 0%, #000 7%, #000 90%, transparent 100%),
+    linear-gradient(to bottom, transparent 0%, #000 14%, #000 86%, transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
 }
 
 .ink:focus {
@@ -160,6 +179,32 @@ body {
   line-height: 1.7;
   color: var(--ink);
   text-wrap: pretty;
+}
+
+/*
+ * Inline link sits in running text, so it stays the same weight and color as
+ * the sentence and is marked only by a hairline rule that lights up on hover.
+ */
+.inline-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--ink-ghost);
+  text-underline-offset: 0.28em;
+  transition:
+    text-decoration-color 0.3s ease,
+    text-shadow 0.3s ease;
+}
+
+.inline-link:hover {
+  text-decoration-color: var(--ink);
+  text-shadow: 0 0 8px var(--glow);
+}
+
+.inline-link:focus-visible {
+  outline: 1px solid var(--ink-ghost);
+  outline-offset: 3px;
+  text-decoration-color: var(--ink);
 }
 
 /* ---------------------------------------------------------------- links */
@@ -253,7 +298,8 @@ body {
   }
 
   body,
-  .link {
+  .link,
+  .inline-link {
     transition: none;
   }
 }
