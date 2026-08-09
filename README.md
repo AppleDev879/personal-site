@@ -8,8 +8,9 @@ public/
   styles.css    tokens, layout, type, entrance animation
   main.js       generative ink field + color-scheme toggle
   favicon.svg   theme-aware
+  CNAME         custom domain claim for GitHub Pages
   fonts/        Geist + Geist Mono (variable, self-hosted, OFL)
-render.yaml     Render blueprint
+.github/workflows/deploy.yml
 ```
 
 ## Run locally
@@ -22,13 +23,15 @@ Then open http://localhost:8000.
 
 ## Deploy
 
-Render static site, from `render.yaml`:
+GitHub Pages, via `.github/workflows/deploy.yml` — push to `main` and the
+workflow uploads `public/` and deploys it. Pages source must be set to
+**GitHub Actions** (not a branch).
 
-- **Publish directory** `public`
-- **Build command** none
-
-Push to `main` and Render redeploys. To point `abarrett.io` at it, add the
-custom domain in the Render dashboard and follow the DNS records it prints.
+`abarrett.io` is served through Cloudflare, which proxies to GitHub Pages.
+DNS lives in Cloudflare and does not need to change when the serving repo
+changes — Pages routes by the custom domain claim, which is `public/CNAME`
+plus the domain set in this repo's Pages settings. Only one repo may claim
+the domain at a time.
 
 ## Notes
 
