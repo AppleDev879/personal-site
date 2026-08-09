@@ -153,6 +153,13 @@
   var SWIRL_RATE = 0.0028; // radians per ms at full power
   var lastStep = 0;
 
+  /*
+   * The field opens already wound around a still core and holds there, so
+   * the resting state is the singularity rather than a flat band. The first
+   * press hands control over and it never comes back.
+   */
+  var intro = true;
+
   function gaussian() {
     // Box-Muller, clamped — keeps the stroke banded around the centerline.
     var u = 0;
@@ -215,6 +222,13 @@
     COUNT = Math.round(Math.min(850, Math.max(380, (W * H) / (1800 * dpr))));
     particles = new Array(COUNT);
     for (var i = 0; i < COUNT; i++) particles[i] = spawn({}, true);
+
+    // Re-centre the resting vortex; a resize changes where the middle is.
+    if (intro) {
+      swirl.x = W / 2;
+      swirl.y = H / 2;
+      swirl.held = true;
+    }
 
     time = 0;
     return true;
@@ -401,6 +415,16 @@
       step(true);
       return;
     }
+
+    /*
+     * Wind the resting vortex before the first paint. Left to run in real
+     * time it needs about seven seconds to close into a ring, which is far
+     * longer than anyone waits — simulating it costs ~50ms instead.
+     */
+    if (intro) {
+      for (var j = 0; j < 700; j++) step(false);
+    }
+
     stop();
     start();
   }
@@ -414,7 +438,14 @@
     pointer.active = true;
   }
 
+  function endIntro() {
+    if (!intro) return;
+    intro = false;
+    swirl.held = false; // unwinds unless the press below takes it over
+  }
+
   function holdAt(clientX, clientY) {
+    endIntro();
     toLocal(clientX, clientY);
     swirl.x = pointer.x;
     swirl.y = pointer.y;
@@ -422,19 +453,28 @@
     swirl.held = true;
   }
 
+  var pressing = false;
+
   function release() {
+    pressing = false;
+    // Only a press ends the resting vortex — not a stray mouseout or blur.
+    if (intro) return;
     swirl.held = false;
   }
 
   canvas.addEventListener('pointermove', function (e) {
     toLocal(e.clientX, e.clientY);
-    if (swirl.held) {
+    // Only an actual press drags the vortex. `swirl.held` is also true
+    // during the intro, so keying off it would let a passing cursor haul
+    // the resting singularity across the canvas.
+    if (pressing) {
       swirl.x = pointer.x;
       swirl.y = pointer.y;
     }
   });
 
   canvas.addEventListener('pointerdown', function (e) {
+    pressing = true;
     // Keep receiving moves even if the finger slides off the canvas.
     if (canvas.setPointerCapture) {
       try {
@@ -456,6 +496,7 @@
   canvas.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
     e.preventDefault();
+    endIntro();
     if (swirl.held) return; // ignore auto-repeat
     swirl.x = W / 2;
     swirl.y = H / 2;
