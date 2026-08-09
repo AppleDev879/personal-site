@@ -143,6 +143,16 @@
 
   var pointer = { x: 0, y: 0, active: false };
 
+  /*
+   * Held-pointer vortex. `power` eases toward 1 while the pointer is down
+   * and back to 0 on release, so the rotation spins up and unwinds instead
+   * of snapping. Rotation is per-millisecond, not per-frame — a 120Hz
+   * display would otherwise turn the streams twice as fast as a 60Hz one.
+   */
+  var swirl = { x: 0, y: 0, held: false, power: 0, dir: 1 };
+  var SWIRL_RATE = 0.0028; // radians per ms at full power
+  var lastStep = 0;
+
   function gaussian() {
     // Box-Muller, clamped — keeps the stroke banded around the centerline.
     var u = 0;
@@ -230,10 +240,22 @@
   function step(draw) {
     time += 0.0016;
 
+    // Warm-up steps aren't wall-clock paced, so give them a nominal frame.
+    var dt = 16;
     if (draw) {
+      var now = Date.now();
+      if (lastStep) dt = Math.min(64, now - lastStep);
+      lastStep = now;
+
       ctx.fillStyle = 'rgb(' + surfaceRGB + ')';
       ctx.fillRect(0, 0, W, H);
     }
+
+    // Ease the vortex in while held, out once released.
+    swirl.power += ((swirl.held ? 1 : 0) - swirl.power) * Math.min(1, dt / 160);
+    var swirling = swirl.power > 0.005;
+    var swirlR = Math.max(W, H) * 0.42;
+    var swirlStep = SWIRL_RATE * swirl.power * swirl.dir * dt;
 
     var repel = 130 * dpr;
 
@@ -248,7 +270,7 @@
       // horizontal stroke instead of dispersing off the bottom.
       vy += (H * 0.5 - pt.y) * 0.005;
 
-      if (pointer.active) {
+      if (pointer.active && !swirling) {
         var dx = pt.x - pointer.x;
         var dy = pt.y - pointer.y;
         var d = Math.sqrt(dx * dx + dy * dy);
@@ -256,6 +278,23 @@
           var f = (1 - d / repel) * 2.6;
           vx += (dx / d) * f;
           vy += (dy / d) * f;
+        }
+      }
+
+      if (swirling) {
+        /*
+         * Rigid rotation about the held point: displacement = dtheta x r,
+         * so everything inside the radius turns together rather than
+         * shearing. Smoothstep the falloff so the edge has no seam.
+         */
+        var rx = pt.x - swirl.x;
+        var ry = pt.y - swirl.y;
+        var rd = Math.sqrt(rx * rx + ry * ry);
+        if (rd < swirlR) {
+          var e = 1 - rd / swirlR;
+          var dtheta = swirlStep * e * e * (3 - 2 * e);
+          vx += -ry * dtheta;
+          vy += rx * dtheta;
         }
       }
 
@@ -375,27 +414,61 @@
     pointer.active = true;
   }
 
-  canvas.addEventListener('mousemove', function (e) {
+  function holdAt(clientX, clientY) {
+    toLocal(clientX, clientY);
+    swirl.x = pointer.x;
+    swirl.y = pointer.y;
+    if (!swirl.held) swirl.dir = -swirl.dir; // alternate so repeat taps differ
+    swirl.held = true;
+  }
+
+  function release() {
+    swirl.held = false;
+  }
+
+  canvas.addEventListener('pointermove', function (e) {
     toLocal(e.clientX, e.clientY);
+    if (swirl.held) {
+      swirl.x = pointer.x;
+      swirl.y = pointer.y;
+    }
   });
 
-  canvas.addEventListener('mouseleave', function () {
+  canvas.addEventListener('pointerdown', function (e) {
+    // Keep receiving moves even if the finger slides off the canvas.
+    if (canvas.setPointerCapture) {
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch (_) {}
+    }
+    holdAt(e.clientX, e.clientY);
+  });
+
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+
+  canvas.addEventListener('pointerleave', function () {
     pointer.active = false;
+    release();
   });
 
-  canvas.addEventListener(
-    'touchmove',
-    function (e) {
-      if (e.touches && e.touches.length) {
-        toLocal(e.touches[0].clientX, e.touches[0].clientY);
-      }
-    },
-    { passive: true }
-  );
-
-  canvas.addEventListener('touchend', function () {
-    pointer.active = false;
+  // Keyboard equivalent: hold Enter or Space to swirl from the center.
+  canvas.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    e.preventDefault();
+    if (swirl.held) return; // ignore auto-repeat
+    swirl.x = W / 2;
+    swirl.y = H / 2;
+    swirl.dir = -swirl.dir;
+    swirl.held = true;
   });
+
+  canvas.addEventListener('keyup', function (e) {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') release();
+  });
+
+  canvas.addEventListener('blur', release);
+  window.addEventListener('blur', release);
 
   // ------------------------------------------------------------- theme
 
@@ -414,14 +487,8 @@
     if (reduceMotion) render();
   }
 
-  canvas.addEventListener('click', toggleTheme);
-
-  canvas.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-      e.preventDefault();
-      toggleTheme();
-    }
-  });
+  var themeButton = document.getElementById('theme-toggle');
+  if (themeButton) themeButton.addEventListener('click', toggleTheme);
 
   // ------------------------------------------------------------ lifecycle
 

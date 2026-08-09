@@ -126,6 +126,8 @@ body {
   height: auto;
   aspect-ratio: 5 / 2;
   cursor: pointer;
+  /* Holding to swirl must not be stolen by the page as a scroll gesture. */
+  touch-action: none;
 
   /*
    * Feather all four sides so the stroke dissolves into the page instead of
@@ -214,6 +216,14 @@ body {
   flex-wrap: wrap;
   align-items: center;
   gap: calc(var(--step) * 2) calc(var(--step) * 3);
+}
+
+/* The theme control is a button but belongs to the link row visually. */
+button.link {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
 }
 
 .link {
