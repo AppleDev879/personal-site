@@ -221,11 +221,19 @@
     return (a * 0.68 + b * 0.32) * 0.95;
   }
 
-  function step() {
+  /*
+   * `draw` false advances the simulation without painting. Settling the
+   * still frame for reduced motion needs hundreds of steps of field
+   * evolution, and drawing them all would block the page for seconds —
+   * the physics alone is cheap.
+   */
+  function step(draw) {
     time += 0.0016;
 
-    ctx.fillStyle = 'rgb(' + surfaceRGB + ')';
-    ctx.fillRect(0, 0, W, H);
+    if (draw) {
+      ctx.fillStyle = 'rgb(' + surfaceRGB + ')';
+      ctx.fillRect(0, 0, W, H);
+    }
 
     var repel = 130 * dpr;
 
@@ -261,7 +269,7 @@
       }
 
       if (pt.life % SAMPLE === 0) pushPoint(pt, pt.x, pt.y);
-      if (pt.n < 2) continue;
+      if (!draw || pt.n < 2) continue;
 
       var lifeT = pt.life / pt.maxLife;
 
@@ -307,13 +315,17 @@
     }
   }
 
+  var lastFrame = 0;
+
   function loop() {
-    step();
+    lastFrame = Date.now();
+    step(true);
     rafId = window.requestAnimationFrame(loop);
   }
 
   function start() {
     if (rafId !== null || reduceMotion) return;
+    lastFrame = Date.now();
     rafId = window.requestAnimationFrame(loop);
   }
 
@@ -323,11 +335,31 @@
     rafId = null;
   }
 
+  /*
+   * iOS can suspend rAF without firing visibilitychange — returning from a
+   * lock screen or a bfcache back-navigation leaves a scheduled callback
+   * that never runs. `rafId` is still set, so start() would no-op and the
+   * canvas would sit frozen forever. If the page is visible but no frame
+   * has landed recently, tear the loop down and rebuild it.
+   */
+  function ensureRunning() {
+    if (reduceMotion || document.hidden) return;
+    if (rafId !== null && Date.now() - lastFrame < 1000) return;
+    stop();
+    start();
+  }
+
   function render() {
     if (!build()) return;
     if (reduceMotion) {
-      // Advance to a settled frame and leave it there.
-      for (var i = 0; i < 240; i++) step();
+      /*
+       * Settle a still frame worth looking at. Seeded streams all start on
+       * a near-identical path and only diverge as the field evolves, so a
+       * short warm-up collapses into a single pinched comet. Simulate long
+       * enough for the band to spread, then paint one frame.
+       */
+      for (var i = 0; i < 1400; i++) step(false);
+      step(true);
       return;
     }
     stop();
@@ -406,8 +438,12 @@
 
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) stop();
-    else start();
+    else ensureRunning();
   });
+
+  // Restored from bfcache, or refocused after the loop was suspended.
+  window.addEventListener('pageshow', ensureRunning);
+  window.addEventListener('focus', ensureRunning);
 
   render();
 })();
