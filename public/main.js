@@ -27,6 +27,7 @@
    */
   var TRAIL = 80;
   var SAMPLE = 3;
+  var CHUNKS = 8; // opacity steps along a trail, tail to head
 
   // ------------------------------------------------------------ noise
 
@@ -105,11 +106,29 @@
   // Dark ink on white reads heavier than white ink on black at equal alpha.
   var inkScale = 1;
 
+  /*
+   * Stroke colors are quantized to 256 alpha steps and cached. Building
+   * "rgb(r g b / a)" strings per segment per frame was measurably the most
+   * expensive thing in the loop; this makes it a array lookup.
+   */
+  var strokeCache = new Array(256);
+
+  function inkAt(a) {
+    var q = a <= 0 ? 0 : a >= 1 ? 255 : (a * 255) | 0;
+    var s = strokeCache[q];
+    if (s === undefined) {
+      s = 'rgb(' + inkRGB + ' / ' + (q / 255).toFixed(3) + ')';
+      strokeCache[q] = s;
+    }
+    return s;
+  }
+
   function readColors() {
     var cs = getComputedStyle(document.documentElement);
     inkRGB = (cs.getPropertyValue('--ink-rgb') || '255 255 255').trim();
     surfaceRGB = (cs.getPropertyValue('--surface-rgb') || '0 0 0').trim();
     inkScale = document.documentElement.getAttribute('data-theme') === 'light' ? 0.92 : 1;
+    strokeCache = new Array(256); // ink color changed; drop memoized strings
   }
 
   // ------------------------------------------------------------ state
@@ -145,7 +164,7 @@
     // Wider streams run fainter, so the band keeps some depth.
     var w = Math.random();
     pt.weight = (0.35 + w * 1.0) * dpr;
-    pt.alpha = 0.42 - w * 0.24;
+    pt.alpha = 0.66 - w * 0.34;
 
     if (!pt.tx) {
       pt.tx = new Float32Array(TRAIL);
@@ -177,7 +196,9 @@
     canvas.height = H;
 
     readColors();
-    ctx.lineCap = 'round';
+    // Butt caps, not round: consecutive chunks share an endpoint, and round
+    // caps stack there into a visible bright bead along every filament.
+    ctx.lineCap = 'butt';
     ctx.lineJoin = 'round';
 
     // Trails are redrawn each frame, so density is a cost as well as a look.
@@ -242,22 +263,47 @@
       if (pt.life % SAMPLE === 0) pushPoint(pt, pt.x, pt.y);
       if (pt.n < 2) continue;
 
-      // Age envelope: quick to appear, then a long eased dissolve.
       var lifeT = pt.life / pt.maxLife;
-      var a2 = pt.alpha * smoothstep(0, 0.05, lifeT) * (1 - smoothstep(0.4, 1, lifeT)) * inkScale;
-      if (a2 <= 0.003) continue;
 
-      ctx.strokeStyle = 'rgb(' + inkRGB + ' / ' + a2.toFixed(4) + ')';
-      ctx.lineWidth = pt.weight;
-      ctx.beginPath();
+      // A stream dies from its tail forward: `death` is how far along the
+      // trail the dissolve has swept, so the oldest ink is always the first
+      // to go and the leading head is the last thing left.
+      var death = smoothstep(0.4, 1, lifeT);
+      var a2 = pt.alpha * smoothstep(0, 0.05, lifeT) * inkScale;
+      if (a2 <= 0.003 || death >= 0.99) continue;
 
       var start = (pt.head - pt.n + TRAIL) % TRAIL;
-      ctx.moveTo(pt.tx[start], pt.ty[start]);
-      for (var k = 1; k < pt.n; k++) {
-        var idx = (start + k) % TRAIL;
-        ctx.lineTo(pt.tx[idx], pt.ty[idx]);
+      var span = pt.n - 1;
+      ctx.lineWidth = pt.weight;
+
+      /*
+       * Walk the trail in chunks from tail to head, each stroked at the
+       * opacity for its own position along the fade. Chunks behind the
+       * dissolve front are fully transparent and skipped outright, so an
+       * old stream costs less to draw as it disappears.
+       */
+      for (var c = 0; c < CHUNKS; c++) {
+        var i0 = ((c * span) / CHUNKS) | 0;
+        var i1 = (((c + 1) * span) / CHUNKS) | 0;
+        if (i1 <= i0) continue;
+
+        // Position of this chunk along the trail: 0 at the tail, 1 at the head.
+        var u = (i0 + i1) / 2 / span;
+        if (u <= death) continue;
+
+        var t = (u - death) / (1 - death);
+        var aChunk = a2 * t * (0.35 + 0.65 * t);
+        if (aChunk <= 0.004) continue;
+
+        ctx.strokeStyle = inkAt(aChunk);
+        ctx.beginPath();
+        ctx.moveTo(pt.tx[(start + i0) % TRAIL], pt.ty[(start + i0) % TRAIL]);
+        for (var k = i0 + 1; k <= i1; k++) {
+          var idx = (start + k) % TRAIL;
+          ctx.lineTo(pt.tx[idx], pt.ty[idx]);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
     }
   }
 
