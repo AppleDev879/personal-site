@@ -472,14 +472,8 @@
 
   // ------------------------------------------------------------- theme
 
-  var themeButton = document.getElementById('theme-toggle');
-
-  // The label names the action, not the state, so it stays true after a click.
-  function syncThemeLabel() {
-    if (!themeButton) return;
-    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
-    themeButton.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-  }
+  // Touch-primary devices have no key to press, so they stay on dark.
+  var themeLocked = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 
   function toggleTheme() {
     var root = document.documentElement;
@@ -493,12 +487,21 @@
     if (meta) meta.setAttribute('content', next === 'dark' ? '#000000' : '#ffffff');
 
     readColors();
-    syncThemeLabel();
     if (reduceMotion) render();
   }
 
-  if (themeButton) themeButton.addEventListener('click', toggleTheme);
-  syncThemeLabel();
+  document.addEventListener('keydown', function (e) {
+    if (themeLocked) return;
+    if (e.key !== 't' && e.key !== 'T') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    // Don't hijack the key while someone is typing.
+    var el = e.target;
+    if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+
+    e.preventDefault();
+    toggleTheme();
+  });
 
   // ------------------------------------------------------------ lifecycle
 

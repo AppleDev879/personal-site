@@ -26,6 +26,12 @@ jobs:
 
       - uses: actions/configure-pages@v5
 
+      # Stamp asset URLs with the commit SHA. Cloudflare caches styles.css
+      # and main.js for 10 minutes, so without this a visitor can end up
+      # running a stale script against fresh markup.
+      - name: Version asset URLs
+        run: sed -i "s/__V__/${GITHUB_SHA::12}/g" public/index.html
+
       # The site is already static — public/ ships as-is, no build step.
       - uses: actions/upload-pages-artifact@v3
         with:
