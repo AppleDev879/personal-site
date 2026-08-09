@@ -472,6 +472,15 @@
 
   // ------------------------------------------------------------- theme
 
+  var themeButton = document.getElementById('theme-toggle');
+
+  // The label names the action, not the state, so it stays true after a click.
+  function syncThemeLabel() {
+    if (!themeButton) return;
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    themeButton.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+  }
+
   function toggleTheme() {
     var root = document.documentElement;
     var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
@@ -484,11 +493,12 @@
     if (meta) meta.setAttribute('content', next === 'dark' ? '#000000' : '#ffffff');
 
     readColors();
+    syncThemeLabel();
     if (reduceMotion) render();
   }
 
-  var themeButton = document.getElementById('theme-toggle');
   if (themeButton) themeButton.addEventListener('click', toggleTheme);
+  syncThemeLabel();
 
   // ------------------------------------------------------------ lifecycle
 

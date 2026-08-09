@@ -209,6 +209,51 @@ body {
   text-decoration-color: var(--ink);
 }
 
+/* ---------------------------------------------------------------- theme */
+
+/*
+ * Anchored to the viewport corner rather than the centered column, and kept
+ * near-invisible until reached for. The box is finger-sized; only the glyph
+ * inside is small.
+ */
+.theme-toggle {
+  position: fixed;
+  top: calc(var(--step) * 4);
+  left: calc(var(--step) * 4);
+  z-index: 2;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+
+  background: none;
+  border: 0;
+  color: var(--ink-ghost);
+  cursor: pointer;
+  transition:
+    color 0.3s ease,
+    filter 0.3s ease;
+}
+
+.theme-toggle:hover {
+  color: var(--ink);
+  filter: drop-shadow(0 0 6px var(--glow));
+}
+
+.theme-toggle:focus-visible {
+  color: var(--ink);
+  outline: 1px solid var(--ink-ghost);
+  outline-offset: 2px;
+}
+
+.theme-toggle svg {
+  display: block;
+}
+
 /* ---------------------------------------------------------------- links */
 
 .links {
@@ -216,14 +261,6 @@ body {
   flex-wrap: wrap;
   align-items: center;
   gap: calc(var(--step) * 2) calc(var(--step) * 3);
-}
-
-/* The theme control is a button but belongs to the link row visually. */
-button.link {
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
 }
 
 .link {
@@ -309,7 +346,8 @@ button.link {
 
   body,
   .link,
-  .inline-link {
+  .inline-link,
+  .theme-toggle {
     transition: none;
   }
 }

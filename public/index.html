@@ -56,6 +56,24 @@
   </head>
 
   <body>
+    <button
+      id="theme-toggle"
+      class="theme-toggle"
+      type="button"
+      aria-label="Switch to light theme"
+    >
+      <!-- Crescent as a disc with an offset disc masked out, so its
+           thinness is a matter of moving one circle. -->
+      <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" focusable="false">
+        <mask id="moon-cut">
+          <rect width="24" height="24" fill="black" />
+          <circle cx="12" cy="12" r="9" fill="white" />
+          <circle cx="16.4" cy="9.2" r="8.6" fill="black" />
+        </mask>
+        <circle cx="12" cy="12" r="9" fill="currentColor" mask="url(#moon-cut)" />
+      </svg>
+    </button>
+
     <main class="stage">
       <div class="column">
         <div class="mark reveal" style="--delay: 0ms">
@@ -102,8 +120,6 @@
             rel="noopener noreferrer"
             >X</a
           >
-          <span class="sep" aria-hidden="true">/</span>
-          <button id="theme-toggle" class="link" type="button">Theme</button>
         </nav>
       </div>
     </main>
